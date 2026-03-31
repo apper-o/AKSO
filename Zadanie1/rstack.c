@@ -27,6 +27,12 @@ typedef struct rstack
 
 } rstack_t;
 
+typedef struct cycle_node
+{
+    rstack_t *rs;
+    struct cycle_node *next;
+} cycle_node_t;
+
 rstack_t *rstack_new()
 {
     rstack_t *rs = malloc(sizeof(rstack_t));
@@ -185,6 +191,8 @@ rstack_t* rstack_read(char const *path)
 {
     if(path == nullptr)
     {
+        // errno is set to
+        errno = EINVAL;
         return nullptr;
     }
 
@@ -195,7 +203,95 @@ rstack_t* rstack_read(char const *path)
         return nullptr; // ew. dodać printy do errno
     }
 
+    rstack_t *rs = rstack_new();
+    if(rs == nullptr)
+    {
+        // errno is already set by rstack_new()
+        flosce(file);
+        return nullptr;
+    }
+
+    int no_inputs;
+    uint64_t number;
+    
+    // Captures the number of input variables
+    while(no_inputs = fscanf(file, "%" SCNu64, &number) == 1)
+    {
+        if(rstack_push_value(rs, number) != 0)
+        {
+            // Error while pushing elements - errno is already set
+            rstack_delete(rs);
+            flose(file);
+            return nullptr;
+        }
+    }
+
+    // Invalid input: last symbol was not EOF
+    if(no_inputs == 0)
+    {
+        errno = EINVAL;
+        rstack_delete(rs);
+        fclose(file);
+        return nullptr;
+    }
+
     fclose(file);
+    return rs;
 }
 
+/*
+ * Returns 0 if writing is successful
+ * Returns 1 if cycle is detected
+ * Returns 2 if a print error is detected
+*/
+int recursive_write(FILE *file, rstack_t *rs, cycle_node_t *top)
+{
+    cycle_node_t *current_cycle_node = top;
+    // Checks for a cycle
+    while(current_cycle_node != nullptr)
+        if(current_cycle_node->rs == rs)  
+            return 1; 
 
+    node_t *current_node = rs->top;
+    while(current_node != nullptr)
+    {
+        if(current_node->type == RSTACK)
+            return recursive_wirte(file, current_node->rs, current_cycle_node);
+        else
+        {
+            if(fprintf(file, "%" PRIu64, current_node->value) <= 0)
+                return 2;
+        }
+        current_node = current_node->next;
+    }
+    
+    current_cycle_node->rs = rs;
+    current_cycle_node->next = top;
+
+    return 0;
+}
+
+int rsatck_write(char const *path, rstack_t *rs)
+{
+    if(path == nullptr || rs == nullptr)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    FILE *file = fopen(path, "w");
+    if(file == nullptr)
+        return -1;
+
+    int type = recursive_write(file, rs, nullptr);
+
+    /* if f(close(f) == EOF*/
+    fclose(file);
+    // Returns an error only if type = 2
+    // For cycle it only stops writing.
+    if(type == 2)
+    {
+        return -1;
+    }
+
+    return 0;
+}
