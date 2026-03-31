@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
 typedef enum
 {
     VALUE, RSTACK
@@ -121,7 +120,7 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2)
     // Updates node parameters and changes top node.
     node->next = rs1->top;
     node->type = RSTACK;
-    node->value = rs2;
+    node->rs = rs2;
 
     rs1->top = node;
 
@@ -207,7 +206,7 @@ rstack_t* rstack_read(char const *path)
     if(rs == nullptr)
     {
         // errno is already set by rstack_new()
-        flosce(file);
+        fclose(file);
         return nullptr;
     }
 
@@ -215,13 +214,13 @@ rstack_t* rstack_read(char const *path)
     uint64_t number;
     
     // Captures the number of input variables
-    while(no_inputs = fscanf(file, "%" SCNu64, &number) == 1)
+    while((no_inputs = fscanf(file, "%" SCNu64, &number)) == 1)
     {
         if(rstack_push_value(rs, number) != 0)
         {
             // Error while pushing elements - errno is already set
             rstack_delete(rs);
-            flose(file);
+            fclose(file);
             return nullptr;
         }
     }
@@ -256,7 +255,7 @@ int recursive_write(FILE *file, rstack_t *rs, cycle_node_t *top)
     while(current_node != nullptr)
     {
         if(current_node->type == RSTACK)
-            return recursive_wirte(file, current_node->rs, current_cycle_node);
+            return recursive_write(file, current_node->rs, current_cycle_node);
         else
         {
             if(fprintf(file, "%" PRIu64, current_node->value) <= 0)
