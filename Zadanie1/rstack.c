@@ -138,7 +138,7 @@ void rstack_pop(rstack_t *rs) {
 bool recursive_empty(rstack_t *rs, cycle_node_t *top) {
     if (rs == nullptr)
         return true;
-    
+
     // Checks for a cycle
     cycle_node_t *current_cycle_node = top;
     while (current_cycle_node != nullptr) {
@@ -172,24 +172,23 @@ result_t recursive_front(rstack_t *rs, cycle_node_t *top) {
         return result;
 
     // Checks for a cycle
-    cycle_node_t *current_cycle_node = top;
-    while (current_cycle_node != nullptr) {
-        if (current_cycle_node->rs == rs)
+    cycle_node_t *cycle_node = top;
+    while (cycle_node != nullptr) {
+        if (cycle_node->rs == rs)
             return result;
-        current_cycle_node = current_cycle_node->next;
+        cycle_node = cycle_node->next;
     }
 
     cycle_node_t next_top = {rs, top};
 
     node_t *current_node = rs->top;
     while (current_node != nullptr && current_node->type == RSTACK) {
-            result = recursive_front(current_node->rs, &next_top);
-            if(result.flag == true)
-                return result;
+        result = recursive_front(current_node->rs, &next_top);
+        if (result.flag == true)
+            return result;
         current_node = current_node->next;
     }
-    if(current_node != nullptr)
-    {
+    if (current_node != nullptr) {
         result.flag = true;
         result.value = current_node->value;
     }
@@ -230,22 +229,19 @@ rstack_t *rstack_read(char const *path) {
     // buffer 64 elementowy zeby wczytwac ew. litery na koncu
     char buffer[64];
 
-    while(fscanf(file, "63s", &buffer) == 1)
-    {
-        if(buffer[0] == '-')
-        {
+    while (fscanf(file, "%63s", buffer) == 1) {
+        if (buffer[0] == '-') {
             errno = EINVAL;
             rstack_delete(rs);
-            flosce(file);
+            fclose(file);
             return nullptr;
         }
 
         char *endptr;
         errno = 0;
-
         unsigned long long value = strtoull(buffer, &endptr, 10);
 
-        if (errno == ERANGE || *endptr != "\0") {
+        if (errno == ERANGE || *endptr != '\0') {
             errno = EINVAL;
             rstack_delete(rs);
             fclose(file);
@@ -276,27 +272,31 @@ rstack_t *rstack_read(char const *path) {
  * Returns 2 if a print error is detected
  */
 int recursive_write(FILE *file, rstack_t *rs, cycle_node_t *top) {
-    cycle_node_t *current_cycle_node = top;
-    if (top != nullptr) {
-        // Checks for a cycle
-        while (current_cycle_node != nullptr)
-            if (current_cycle_node->rs == rs)
-                return 1;
+    if(rs == nullptr)
+        return 0;
+
+    cycle_node_t *cycle_node = top;
+    // Checks for a cycle
+    while (cycle_node != nullptr) {
+        if (cycle_node->rs == rs)
+            return 1;
+        cycle_node = cycle_node->next;
     }
+
+    cycle_node_t next_top = {rs, top};
 
     node_t *current_node = rs->top;
     while (current_node != nullptr) {
-        if (current_node->type == RSTACK)
-            return recursive_write(file, current_node->rs, current_cycle_node);
-        else {
-            if (fprintf(file, "%" PRIu64, current_node->value) <= 0)
+        if (current_node->type == RSTACK) {
+            int type = recursive_write(file, current_node->rs, &next_top);
+            if (type != 0)
+                return type;
+        } else {
+            if (fprintf(file, "%" PRIu64 "\n", current_node->value) <= 0)
                 return 2;
         }
         current_node = current_node->next;
     }
-
-    current_cycle_node->rs = rs;
-    current_cycle_node->next = top;
 
     return 0;
 }
@@ -312,8 +312,9 @@ int rstack_write(char const *path, rstack_t *rs) {
 
     int type = recursive_write(file, rs, nullptr);
 
-    /* if f(close(f) == EOF*/
-    fclose(file);
+    if (fclose(file) == EOF) {
+        return -1;
+    }
     // Returns an error only if type = 2
     // For cycle it only stops writing.
     if (type == 2) {
