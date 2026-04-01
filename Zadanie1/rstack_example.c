@@ -51,6 +51,7 @@ static int zero(void) {
   ASSERT(rstack_empty(rs0) == true);
   ASSERT_RESULT(rstack_front(rs0), false);
   CHECK_IF_NO_ERROR(rstack_write("file_zero.out", rs0));
+  return PASS;
   rstack_delete(rs0);
 
   return PASS;

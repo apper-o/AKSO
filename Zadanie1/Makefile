@@ -1,9 +1,5 @@
 CC = gcc
-
-# Flagi do kompilacji plików
 CFLAGS = -Wall -Wextra -Wno-implicit-fallthrough -std=gnu23 -fPIC -O2
-
-# Flagi dla linkera
 LDFLAGS = -shared -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=reallocarray -Wl,--wrap=free -Wl,--wrap=strdup -Wl,--wrap=strndup
 
 .PHONY: all clean test
@@ -22,11 +18,11 @@ memory_tests.o: memory_tests.c memory_tests.h
 
 # Testowanie
 test: rstack_example.o librstack.so
-	$(CC) $(CFLAGS) rstack_example.o -L. -lrstack -o rstack_example
+	$(CC) $(CFLAGS) rstack_example.o -L. -Wl,-rpath,. -lrstack -o rstack_example
 
 rstack_example.o: rstack_example.c rstack.h
 	$(CC) $(CFLAGS) -c $<
 
 # Wymusza usuwanie plikow
 clean:
-	-rm -f *.o librstack.so rstack_example run_tests
+	rm -f *.o *.so rstack_example
