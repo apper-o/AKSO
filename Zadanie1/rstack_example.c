@@ -57,6 +57,7 @@ static int zero(void) {
   return PASS;
 }
 
+
 static int one(void) {
   rstack_t *rs0 = rstack_new();
   assert(rs0);
@@ -96,7 +97,7 @@ static int two(void) {
   rstack_delete(rs2);
 
   rs2 = rstack_new();
-  assert(rs1);
+  assert(rs2);
 
   CHECK_IF_NO_ERROR(rstack_push_value(rs2, 4));
   CHECK_IF_NO_ERROR(rstack_push_value(rs2, 5));
