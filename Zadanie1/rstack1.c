@@ -381,3 +381,27 @@ int rstack_write(char const *path, rstack_t *rs) {
 
     return 0;
 }
+
+
+// Frees memory from all rstack that havent been manualy freed by the user
+__attribute__((destructor)) static void rstack_clean(void) {
+    rstack_t *rs = global;
+
+    while (rs != nullptr) {
+        node_t *node = rs->top;
+
+        // First we free all the elements
+        while (node != nullptr) {
+            node_t *next = node->next;
+            free(node);
+            node = next;
+        }
+
+        // Then we can free the current rstack
+        rstack_t *next_rs = rs->next_gc;
+        free(rs);
+        rs = next_rs;
+    }
+
+    global = nullptr;
+}

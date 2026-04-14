@@ -1,9 +1,9 @@
 #include "rstack.h"
 #include <errno.h>
+#include <inttypes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include <inttypes.h>
 
 typedef enum { VALUE, RSTACK } element_type_t;
 
@@ -17,14 +17,14 @@ typedef struct node {
 } node_t;
 
 typedef struct rstack {
-    size_t reference_counter; 
-    size_t internal_counter;  
+    size_t reference_counter;
+    size_t internal_counter;
     node_t *top;
 
     // Pola Garbage Collectora
     struct rstack *next_global;
     struct rstack *prev_global;
-    bool marked; 
+    bool marked;
 } rstack_t;
 
 typedef struct cycle_node {
@@ -35,8 +35,9 @@ typedef struct cycle_node {
 static rstack_t *global_head = nullptr;
 
 static void gc_mark(rstack_t *rs) {
-    if (rs == nullptr || rs->marked) return;
-    
+    if (rs == nullptr || rs->marked)
+        return;
+
     rs->marked = true;
     node_t *current = rs->top;
     while (current != nullptr) {
@@ -48,20 +49,23 @@ static void gc_mark(rstack_t *rs) {
 }
 
 static void rstack_gc() {
-    for (rstack_t *curr = global_head; curr != nullptr; curr = curr->next_global) {
+    for (rstack_t *curr = global_head; curr != nullptr;
+         curr = curr->next_global) {
         curr->marked = false;
     }
 
-    for (rstack_t *curr = global_head; curr != nullptr; curr = curr->next_global) {
+    for (rstack_t *curr = global_head; curr != nullptr;
+         curr = curr->next_global) {
         if (curr->reference_counter > curr->internal_counter) {
             gc_mark(curr);
         }
     }
 
-    for (rstack_t *curr = global_head; curr != nullptr; curr = curr->next_global) {
+    for (rstack_t *curr = global_head; curr != nullptr;
+         curr = curr->next_global) {
         if (!curr->marked) {
             node_t *current = curr->top;
-            curr->top = nullptr; 
+            curr->top = nullptr;
             while (current != nullptr) {
                 node_t *next = current->next;
                 if (current->type == RSTACK) {
@@ -78,11 +82,14 @@ static void rstack_gc() {
     while (curr != nullptr) {
         rstack_t *next = curr->next_global;
         if (!curr->marked) {
-            if (curr->prev_global != nullptr) curr->prev_global->next_global = next;
-            else global_head = next;
-            
-            if (next != nullptr) next->prev_global = curr->prev_global;
-            
+            if (curr->prev_global != nullptr)
+                curr->prev_global->next_global = next;
+            else
+                global_head = next;
+
+            if (next != nullptr)
+                next->prev_global = curr->prev_global;
+
             free(curr);
         }
         curr = next;
@@ -113,12 +120,13 @@ rstack_t *rstack_new() {
 }
 
 void rstack_delete(rstack_t *rs) {
-    if (rs == nullptr) return;
-    
+    if (rs == nullptr)
+        return;
+
     if (rs->reference_counter > 0) {
         rs->reference_counter--;
     }
-    
+
     rstack_gc();
 }
 
@@ -168,7 +176,8 @@ int rstack_push_rstack(rstack_t *rs1, rstack_t *rs2) {
 }
 
 void rstack_pop(rstack_t *rs) {
-    if (rs == nullptr || rs->top == nullptr) return;
+    if (rs == nullptr || rs->top == nullptr)
+        return;
 
     node_t *top = rs->top;
     rs->top = top->next;
@@ -178,7 +187,7 @@ void rstack_pop(rstack_t *rs) {
         top->rs->internal_counter--;
     }
     free(top);
-    
+
     rstack_gc();
 }
 
@@ -300,7 +309,7 @@ rstack_t *rstack_read(char const *path) {
 }
 
 static int recursive_write(FILE *file, rstack_t *rs, cycle_node_t *top) {
-    if(rs == nullptr)
+    if (rs == nullptr)
         return 0;
 
     cycle_node_t *cycle_node = top;
@@ -342,10 +351,33 @@ int rstack_write(char const *path, rstack_t *rs) {
     if (fclose(file) == EOF) {
         return -1;
     }
-    
+
     if (type == 2) {
         return -1;
     }
 
     return 0;
+}
+
+// Frees memory from all rstack that havent been manualy freed by the user
+__attribute__((destructor)) static void rstack_clean(void) {
+    rstack_t *rs = global_head;
+
+    while (rs != nullptr) {
+        node_t *node = rs->top;
+
+        // First we free all the elements
+        while (node != nullptr) {
+            node_t *next = node->next;
+            free(node);
+            node = next;
+        }
+
+        // Then we can free the current rstack
+        rstack_t *next_rs = rs->next_global;
+        free(rs);
+        rs = next_rs;
+    }
+
+    global_head = nullptr;
 }
