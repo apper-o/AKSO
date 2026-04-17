@@ -16,4 +16,4 @@ memory_tests.o: memory_tests.c memory_tests.h
 	$(CC) $(CFLAGS) -c $<
 
 clean:
-	rm -f *.o *.so rstack_example
+	rm -f *.o *.so
