@@ -12,9 +12,6 @@ typedef struct rstack {
 
     struct node *top;
 
-    // For cycle detection
-    size_t cycle_id;
-
     // Garbage Collector state and double-linked list pointers
     bool marked_gc;
     struct rstack *next_gc;
@@ -40,9 +37,6 @@ typedef struct cycle_rstack {
 // Global list head for the Garbage Collector
 static rstack_t *global_top = nullptr;
 
-// Global timer used to detect cycles
-static size_t cycle_timer = 0;
-
 // Allocate and initializes a new stack, registering it for GC
 rstack_t *rstack_new() {
     rstack_t *rs = malloc(sizeof(rstack_t));
@@ -56,7 +50,6 @@ rstack_t *rstack_new() {
     rs->rstack_counter = 0;
     rs->top = nullptr;
     rs->marked_gc = false;
-    rs->cycle_id = 0;
 
     // Adjust the GC list
     rs->next_gc = global_top;
@@ -213,19 +206,21 @@ void rstack_pop(rstack_t *rs) {
 }
 
 // Helper function to check emptiness, avoiding cycles
-bool recursive_empty(rstack_t *rs) {
+bool recursive_empty(rstack_t *rs, cycle_rstack_t *top) {
     // A null pointer is considered empty
     if (rs == nullptr)
         return true;
 
-    // Checks if rstack was visited in this call
-    if (cycle_timer == rs->cycle_id)
-        return true;
-    rs->cycle_id = cycle_timer;
+    // Cycle detection
+    for (cycle_rstack_t *cycle_rs = top; cycle_rs != nullptr;
+         cycle_rs = cycle_rs->next)
+        if (cycle_rs->rs == rs)
+            return true;
 
+    cycle_rstack_t next_top = {rs, top};
     node_t *node = rs->top;
     while (node != nullptr && node->type == RSTACK) {
-        if (recursive_empty(node->rs) == false)
+        if (recursive_empty(node->rs, &next_top) == false)
             return false;
         node = node->next;
     }
@@ -236,26 +231,28 @@ bool recursive_empty(rstack_t *rs) {
 
 // Check if the stack is constains any VALUE node
 bool rstack_empty(rstack_t *rs) {
-    cycle_timer++;
-    return recursive_empty(rs);
+    return recursive_empty(rs, nullptr);
 }
 
 // Helper function to find rstack_front checking for cycles
-result_t recursive_front(rstack_t *rs) {
+result_t recursive_front(rstack_t *rs, cycle_rstack_t *top) {
     result_t result = {false, 0};
     // Invalid pointer
     if (rs == nullptr)
         return result;
 
-    // Checks if rstack was visited in this call
-    if (cycle_timer == rs->cycle_id)
-        return result;
-    rs->cycle_id = cycle_timer;
+    // Cycle detection
+    for (cycle_rstack_t *cycle_rs = top; cycle_rs != nullptr;
+         cycle_rs = cycle_rs->next)
+        if (cycle_rs->rs == rs)
+            return result;
+
+    cycle_rstack_t next_top = {rs, top};
 
     // Checks for a number recursively
     node_t *node = rs->top;
     while (node != nullptr && node->type == RSTACK) {
-        result_t current_result = recursive_front(node->rs);
+        result_t current_result = recursive_front(node->rs, &next_top);
         if (current_result.flag == true)
             return current_result;
         node = node->next;
@@ -272,8 +269,7 @@ result_t recursive_front(rstack_t *rs) {
 
 // Get the first value of the rstack
 result_t rstack_front(rstack_t *rs) {
-    cycle_timer++;
-    return recursive_front(rs);
+    return recursive_front(rs, nullptr);
 }
 
 // Read rstack contents from a text file.
@@ -292,7 +288,7 @@ rstack_t *rstack_read(char const *path) {
     // Tries to allocate memory and returns error if it was not successful
     rstack_t *rs = rstack_new();
     if (rs == nullptr) {
-        int saved_errno = errno; 
+        int saved_errno = errno;
         fclose(f);
         errno = saved_errno;
         return nullptr;
@@ -302,10 +298,9 @@ rstack_t *rstack_read(char const *path) {
     while (fscanf(f, "%63s", buffer) == 1) {
         // Validation: No negative signs allowed for uint64_t
         if (buffer[0] == '-') {
-            int saved_errno = EINVAL;
             fclose(f);
             rstack_delete(rs);
-            errno = saved_errno;
+            errno = EINVAL;
             return nullptr;
         }
 
@@ -323,7 +318,7 @@ rstack_t *rstack_read(char const *path) {
         }
 
         if (rstack_push_value(rs, (uint64_t)value) != 0) {
-            int saved_errno = errno; 
+            int saved_errno = errno;
             fclose(f);
             rstack_delete(rs);
             errno = saved_errno;
